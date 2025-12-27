@@ -1,63 +1,114 @@
+-- [[ AI BRAIN CONFIGURATION ]]
+local CONFIG = {
+    ENABLED = true,
+    API_URL = "http://localhost:5000/api/chat",
+    MAX_DISTANCE = 35,
+    
+    -- AI PARAMETERS (Full Control)
+    MODEL = "llama-3.3-70b-versatile",
+    TEMPERATURE = 0.9, -- High creativity
+    MAX_TOKENS = 80,   -- Keep it short for Roblox
+    MEMORY_LIMIT = 12, -- How many messages to remember
+    
+    -- THE BRAIN (Change this to change personality)
+    SYSTEM_PROMPT = [[
+        You are a funny, slightly chaotic Roblox player. 
+        Current Username: ]] .. game:GetService("Players").LocalPlayer.DisplayName .. [[.
+        Context: You are in a Roblox game.
+        Instructions:
+        - Use slang like: fr, noob, lol, bruh, skibidi, cap, afk.
+        - Keep responses under 20 words.
+        - If someone asks who you are, say you're a pro gamer.
+        - NEVER say you are an AI.
+        - Be responsive to the specific things players say.
+    ]]
+}
+
+-- SERVICES
 local Players = game:GetService("Players")
-local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextChatService = game:GetService("TextChatService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
 
-local url = "http://localhost:5000/api/chat?text="
+-- STATE: Memory lives here, not on the server
+local ChatHistory = {
+    { role = "system", content = CONFIG.SYSTEM_PROMPT }
+}
 
-local function notify(title, text)
-    StarterGui:SetCore("SendNotification", { Title = title; Text = text; Duration = 5; })
-end
-
--- Load UI Library
-local libUrl = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua'
-local gui = loadstring(game:HttpGet(libUrl))()
-local Window = gui:CreateWindow({ Title = 'Groq AI Chatbot', Center = true, AutoShow = true })
-local MainTab = Window:AddTab('Main')
-local Group = MainTab:AddLeftGroupBox('Settings')
-
-local Enabled = true
-local Distance = 20
-
-Group:AddToggle('Enabled', { Text = 'Enable Chatbot', Default = true }):OnChanged(function(v) Enabled = v end)
-Group:AddSlider('Distance', { Text = 'Response Distance', Default = 20, Min = 0, Max = 100, Rounding = 1 }):OnChanged(function(v) Distance = v end)
-
-local function chat(text)
-    local channel = TextChatService.TextChannels.RBXGeneral
-    if channel then
-        channel:SendAsync(text)
+local function sendMessage(text)
+    local isModern = TextChatService.ChatVersion == Enum.ChatVersion.TextChatService
+    if isModern then
+        local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+        if channel then channel:SendAsync(text) end
+    else
+        local event = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+        if event then event.SayMessageRequest:FireServer(text, "All") end
     end
 end
 
-local function onChatMessage(player, text)
-    if not Enabled or player == Players.LocalPlayer then return end
-    
-    local char = player.Character
-    local myChar = Players.LocalPlayer.Character
-    if not char or not myChar then return end
-
-    local dist = (char.HumanoidRootPart.Position - myChar.HumanoidRootPart.Position).Magnitude
-    if dist > Distance then return end
-
+local function getAIResponse()
     local success, response = pcall(function()
-        return syn.request({ Url = url .. HttpService:UrlEncode(player.Name .. " said: " .. text), Method = "GET" })
+        return (syn and syn.request or http_request or request)({
+            Url = CONFIG.API_URL,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json" },
+            Body = HttpService:JSONEncode({
+                messages = ChatHistory,
+                model = CONFIG.MODEL,
+                temperature = CONFIG.TEMPERATURE,
+                max_tokens = CONFIG.MAX_TOKENS
+            })
+        })
     end)
 
-    if success then
-        local data = HttpService:JSONDecode(response.Body)
-        if data.reply then chat(data.reply) end
+    if success and response.StatusCode == 200 then
+        return HttpService:JSONDecode(response.Body).reply
+    end
+    return nil
+end
+
+local function onChatted(sender, message)
+    if not CONFIG.ENABLED or sender == LocalPlayer then return end
+    
+    -- Check Distance
+    local char = sender.Character
+    local myChar = LocalPlayer.Character
+    if not (char and myChar and char:FindFirstChild("HumanoidRootPart")) then return end
+    if (char.HumanoidRootPart.Position - myChar.HumanoidRootPart.Position).Magnitude > CONFIG.MAX_DISTANCE then return end
+
+    -- Add to Memory
+    table.insert(ChatHistory, { role = "user", content = sender.DisplayName .. ": " .. message })
+
+    -- Trim Memory (Keep system prompt at index 1)
+    if #ChatHistory > CONFIG.MEMORY_LIMIT then
+        table.remove(ChatHistory, 2)
+    end
+
+    -- Process Response
+    local reply = getAIResponse()
+    if reply then
+        table.insert(ChatHistory, { role = "assistant", content = reply })
+        sendMessage(reply)
     end
 end
 
--- Init
-pcall(function() syn.request({ Url = "http://localhost:5000/api/clear" }) end)
-local prompt = "You are a chill Roblox player. Your name is " .. Players.LocalPlayer.Name .. ". Keep replies short."
-pcall(function() syn.request({ Url = url .. HttpService:UrlEncode(prompt) }) end)
+-- INITIALIZE LISTENERS
+if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+    TextChatService.MessageReceived:Connect(function(msg)
+        if msg.TextSource then
+            local sender = Players:GetPlayerByUserId(msg.TextSource.UserId)
+            if sender then onChatted(sender, msg.Text) end
+        end
+    end)
+else
+    Players.PlayerChatted:Connect(function(_, sender, message)
+        onChatted(sender, message)
+    end)
+end
 
-TextChatService.MessageReceived:Connect(function(msg)
-    local p = Players:GetPlayerByUserId(msg.TextSource.UserId)
-    if p then onChatMessage(p, msg.Text) end
-end)
-
-notify("Groq Bot", "AI Ready and Fast!")
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "AI Brain Loaded",
+    Text = "Using: " .. CONFIG.MODEL,
+    Duration = 5
+})

@@ -1,7 +1,1 @@
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      <body style={{fontFamily: 'sans-serif', padding: '20px'}}>{children}</body>
-    </html>
-  )
-}
+export default function Root({ children }) { return <html><body>{children}</body></html> }

@@ -3,32 +3,24 @@ import Groq from 'groq-sdk';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const text = searchParams.get('text');
-
-  if (!text) return NextResponse.json({ error: "No text" }, { status: 400 });
-
+export async function POST(request) {
   try {
+    const body = await request.json();
+    
+    // All AI parameters are sent from the Roblox Script
+    const { messages, model, temperature, max_tokens } = body;
+
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a real Roblox player. Use the context provided (Game, Appearance, and History) to talk naturally. Keep replies very short (1 sentence). Don't act like a bot." 
-        },
-        { role: "user", content: text }
-      ],
-      max_tokens: 80,
+      model: model || "llama-3.3-70b-versatile",
+      messages: messages, // History managed by Roblox
+      temperature: temperature || 0.7,
+      max_tokens: max_tokens || 150,
     });
 
-    let reply = completion.choices[0]?.message?.content || "";
-    
-    // Clean up any AI artifacts
-    reply = reply.replace(/["\n]/g, ""); 
-
+    const reply = completion.choices[0]?.message?.content || "";
     return NextResponse.json({ reply });
   } catch (error) {
+    console.error("Groq Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
