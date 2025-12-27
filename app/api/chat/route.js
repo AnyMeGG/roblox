@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
-
-if (!global.chatHistory) {
-  global.chatHistory = [];
-}
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
@@ -15,26 +9,26 @@ export async function GET(request) {
 
   if (!text) return NextResponse.json({ error: "No text" }, { status: 400 });
 
-  global.chatHistory.push({ role: "user", content: text });
-
   try {
     const completion = await groq.chat.completions.create({
-      // Using Llama 3.3 70B for high quality and speed
       model: "llama-3.3-70b-versatile",
-      messages: global.chatHistory,
-      max_tokens: 150,
+      messages: [
+        { 
+          role: "system", 
+          content: "You are a real Roblox player. Use the context provided (Game, Appearance, and History) to talk naturally. Keep replies very short (1 sentence). Don't act like a bot." 
+        },
+        { role: "user", content: text }
+      ],
+      max_tokens: 80,
     });
 
-    const reply = completion.choices[0]?.message?.content || "";
-    global.chatHistory.push({ role: "assistant", content: reply });
+    let reply = completion.choices[0]?.message?.content || "";
+    
+    // Clean up any AI artifacts
+    reply = reply.replace(/["\n]/g, ""); 
 
-    // Keep memory to last 12 messages
-    if (global.chatHistory.length > 12) global.chatHistory.splice(0, 2);
-
-    console.log(`User: ${text}\nGroq: ${reply}\n---`);
     return NextResponse.json({ reply });
   } catch (error) {
-    console.error("Groq Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
