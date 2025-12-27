@@ -4,7 +4,7 @@ export default function Page() {
       <h1 style={{fontSize: '3rem'}}>🧠 Headless Groq Proxy</h1>
       <p style={{color: '#666'}}>Logic and Memory are currently controlled by the Roblox Lua Script.</p>
       <div style={{background: '#f4f4f4', padding: '20px', borderRadius: '10px', display: 'inline-block'}}>
-        <code>Listening on: <strong>http://localhost:5000/api/chat</strong></code>
+        <code>Listening on: <strong>https://roblox-one-xi.vercel.app/api/chat</strong></code>
       </div>
     </div>
   )
