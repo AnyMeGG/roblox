@@ -1,0 +1,33 @@
+name: Build & Release APK
+
+on:
+  push:
+    branches: [ "main" ]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - name: Build APK
+        run: ./gradlew assembleRelease
+
+      - name: Upload APK to Release
+        if: github.event_name == 'release'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ github.event.release.tag_name }}
+          file: app/build/outputs/apk/release/app-release.apk
